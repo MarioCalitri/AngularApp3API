@@ -1,49 +1,68 @@
 <?php
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+    require('connect.php');
+    header('Content-Type: application/json');
 
-    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-        http_response_code(200);
-        exit();
-    }
+    // Keep warnings/errors out of JSON output while still logging them
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    error_reporting(E_ALL);
 
-    require 'connect.php';
-
+    // Read JSON request body sent by Angular BookService
     $postdata = file_get_contents("php://input");
 
-    if (isset($postdata) && !empty($postdata)) {
+    if (!empty($postdata)) {
         $request = json_decode($postdata);
+        $payload = $request->data ?? $request;
 
-        // Unwrap { data: { ... } } if sent by BookService
-        $payload = isset($request->data) ? $request->data : $request;
+        if (!is_object($payload)) {
+            http_response_code(400);
+            echo json_encode(['message' => 'Invalid request payload']);
+            exit;
+        }
 
-        $title = mysqli_real_escape_string($con, trim($payload->title ?? ''));
-        $author = mysqli_real_escape_string($con, trim($payload->author ?? ''));
+        // Validate required book fields
+        if (
+            empty(trim($payload->title ?? '')) ||
+            empty(trim($payload->author ?? ''))
+        ) {
+            http_response_code(400);
+            echo json_encode(['message' => 'Title and author are required']);
+            exit;
+        }
+
+        // Sanitize inputs for SQL
+        $title = mysqli_real_escape_string($con, trim($payload->title));
+        $author = mysqli_real_escape_string($con, trim($payload->author));
         $description = mysqli_real_escape_string($con, trim($payload->description ?? ''));
         $imageName = mysqli_real_escape_string($con, trim($payload->imageName ?? ''));
 
-        if ($title === '' || $author === '') {
-            http_response_code(400);
-            echo json_encode(['message' => 'Title and author are required.']);
-            exit();
+        // Normalize filename and fall back to default cover image
+        $cleanPath = str_replace('\\', '/', $imageName);
+        $fileName = basename($cleanPath);
+        if (empty($fileName)) {
+            $fileName = 'placeholder_100.jpg';
         }
 
-        $sql = "INSERT INTO books (title, author, description, imageName) VALUES ('{$title}', '{$author}', '{$description}', '{$imageName}')";
+        $sql = "INSERT INTO `books` (`title`, `author`, `description`, `imageName`)
+                VALUES ('{$title}', '{$author}', '{$description}', '{$fileName}')";
 
         if (mysqli_query($con, $sql)) {
             http_response_code(201);
-            $book = [
-                'id' => mysqli_insert_id($con),
-                'title' => $title,
-                'author' => $author,
-                'description' => $description,
-                'imageName' => $imageName
-            ];
-            echo json_encode(['data' => $book]);
+            echo json_encode([
+                'data' => [
+                    'id' => mysqli_insert_id($con),
+                    'title' => $title,
+                    'author' => $author,
+                    'description' => $description,
+                    'imageName' => $fileName
+                ]
+            ]);
         } else {
             http_response_code(422);
-            echo json_encode(['message' => 'Database insert failed: ' . mysqli_error($con)]);
+            echo json_encode(['message' => 'Failed to insert book into database.']);
         }
+    } else {
+        http_response_code(400);
+        echo json_encode(['message' => 'Empty request body.']);
     }
 ?>

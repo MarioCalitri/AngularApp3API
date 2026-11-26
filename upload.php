@@ -1,36 +1,51 @@
 <?php
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+header("Access-Control-Allow-Origin: http://localhost:49578");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
-    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-        http_response_code(200);
-        exit();
-    }
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
 
-    header('Content-Type: application/json');
+header('Content-Type: application/json');
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
-    // Use absolute path so PHP always finds the uploads folder inside AngularApp3API
-    $uploadDir = __DIR__ . '/uploads/';
+$uploadDir = 'uploads/';
 
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    if (isset($_FILES['image'])) {
-        $file = $_FILES['image'];
-        $filename = basename($file['name']);
-        $targetFilePath = $uploadDir . $filename;
-
-        if ($file['error'] === UPLOAD_ERR_OK) {
-            if (move_uploaded_file($file['tmp_name'], $targetFilePath)) {
-                http_response_code(200);
-                echo json_encode(['message' => 'Image uploaded successfully.', 'filename' => $filename]);
-                exit();
-            }
-        }
-    }
-
+// Check if file was uploaded
+if (!isset($_FILES['image']) || $_FILES['image']['error'] != UPLOAD_ERR_OK)
+{
     http_response_code(400);
-    echo json_encode(['error' => 'Image upload failed.']);
+    echo json_encode(['error' => 'No file uploaded or upload error occurred.']);
+    exit;
+}
+
+// Validate file type (allow only JPG, PNG, GIF)
+$allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+$fileTmpPath = $_FILES['image']['tmp_name'];
+$fileName = basename($_FILES['image']['name']);
+$fileType = mime_content_type($fileTmpPath);
+
+if (!in_array($fileType, $allowedMimeTypes))
+{
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid image format. Only JPG, PNG and GIF are allowed.']);
+    exit;
+}
+
+// Move file to uploads folder
+$targetFilePath = $uploadDir . $fileName;
+if(move_uploaded_file($fileTmpPath, $targetFilePath))
+{
+    http_response_code(200);
+    echo json_encode(['message' => 'File uploaded successfully.', 'filename' => $fileName]);
+}
+else
+{
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to move uploaded file.']);
+}
+
 ?>
